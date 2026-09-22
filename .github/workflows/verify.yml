@@ -52,8 +52,8 @@ jobs:
               curl -fsS -o "$cached" \
                 "https://raw.githubusercontent.com/metamath/set.mm/$commit/set.mm"
             fi
-            cp "$cached" "$entry/set.mm"
             db="$(cd "$entry" && ls *.mm)"
+            cp "$cached" "$entry/set.mm"
             echo "::group::$entry ($commit)"
             # Both verifiers resolve `$[ set.mm $]` relative to the working
             # directory, so each runs from inside the entry.
