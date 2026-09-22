@@ -1,0 +1,66 @@
+name: verify
+
+on: [push, pull_request]
+
+env:
+  MMVERIFY_COMMIT: 63a2aa3815cd5bf67892dbfc7f2048cbb177524c
+  METAMATH_EXE_TAG: v0.198
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache metamath-exe binary
+        id: cache-metamath
+        uses: actions/cache@v4
+        with:
+          path: bin/metamath
+          key: metamath-exe-${{ env.METAMATH_EXE_TAG }}
+
+      - name: Build metamath-exe
+        if: steps.cache-metamath.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 -b "$METAMATH_EXE_TAG" \
+            https://github.com/metamath/metamath-exe metamath-exe
+          mkdir -p bin
+          gcc -O2 -o bin/metamath metamath-exe/*.c
+
+      - name: Fetch mmverify.py
+        run: |
+          mkdir -p bin
+          curl -fsS -o bin/mmverify.py \
+            "https://raw.githubusercontent.com/david-a-wheeler/mmverify.py/$MMVERIFY_COMMIT/mmverify.py"
+
+      - name: Cache set.mm snapshots
+        uses: actions/cache@v4
+        with:
+          path: setmm-cache
+          key: setmm-${{ hashFiles('*/setmm-commit.txt') }}
+
+      - name: Verify every entry
+        run: |
+          set -euo pipefail
+          chmod +x bin/metamath
+          mkdir -p setmm-cache
+          for pin in */setmm-commit.txt; do
+            entry="$(dirname "$pin")"
+            commit="$(tr -d '[:space:]' < "$pin")"
+            cached="setmm-cache/$commit.mm"
+            if [ ! -f "$cached" ]; then
+              curl -fsS -o "$cached" \
+                "https://raw.githubusercontent.com/metamath/set.mm/$commit/set.mm"
+            fi
+            cp "$cached" "$entry/set.mm"
+            db="$(cd "$entry" && ls *.mm)"
+            echo "::group::$entry ($commit)"
+            # Both verifiers resolve `$[ set.mm $]` relative to the working
+            # directory, so each runs from inside the entry.
+            ( cd "$entry" && python3 ../bin/mmverify.py "$db" )
+            ( cd "$entry" && ../bin/metamath "read $db" 'verify proof *' 'exit' \
+                | tee /tmp/mm.log
+              grep -q 'All proofs in the database were verified' /tmp/mm.log )
+            echo "::endgroup::"
+            rm -f "$entry/set.mm"
+          done
