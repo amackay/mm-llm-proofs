@@ -1,0 +1,6 @@
+set.mm
+mmverify.py
+metamath
+metamath-exe/
+bin/
+setmm-cache/
